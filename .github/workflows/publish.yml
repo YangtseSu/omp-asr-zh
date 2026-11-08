@@ -26,4 +26,5 @@ jobs:
       - run: npm install -g npm@latest
       - run: bun install --frozen-lockfile
       - run: bun run check
-      - run: npm stage publish
+      # First OIDC publish validates the trusted publisher configuration.
+      - run: npm publish

@@ -41,10 +41,10 @@ bundled model are not modified.
 From the GitHub release tag:
 
 ```bash
-omp install github:YangtseSu/omp-asr-zh#v0.1.0
+omp install github:YangtseSu/omp-asr-zh#v0.1.1
 ```
 
-From npm, after the npm release is published:
+From npm:
 
 ```bash
 omp install omp-asr-zh
