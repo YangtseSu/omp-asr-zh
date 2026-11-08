@@ -1,0 +1,17 @@
+{
+  "name": "omp-asr-zh",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "OMP extension: local Chinese streaming ASR (sherpa-onnx X-ASR) with live dictation",
+  "omp": {
+    "extensions": ["./src/index.ts"]
+  },
+  "scripts": {
+    "check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.9.3"
+  }
+}
