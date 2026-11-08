@@ -19,6 +19,7 @@ import {
 	saveLiveSettings,
 } from "./config";
 import { LiveDictation, type LiveState } from "./live-dictation";
+import { ensureModel, isModelReady } from "./model";
 import { type ServerProcess, startServerProcess } from "./server-process";
 
 const SHERPA_VERSION = "1.13.2";
@@ -45,6 +46,11 @@ let servers: Servers = {};
 let serversReady: Promise<void> | undefined;
 let live: LiveDictation | undefined;
 let liveState: LiveState = "idle";
+type ModelState = "checking" | "ready" | "downloading" | "error";
+let modelState: ModelState = "checking";
+let modelPercent = 0;
+let modelError: string | undefined;
+let modelTask: Promise<void> | undefined;
 const startupErrors: string[] = [];
 
 function log(pi: ExtensionAPI, level: "debug" | "info" | "warn" | "error", message: string, details?: unknown): void {
@@ -93,6 +99,53 @@ async function startServer(pi: ExtensionAPI): Promise<void> {
 		startupErrors.push(`server: ${message}`);
 		log(pi, "error", "ASR server unavailable", { error: message, logFile: LOG_FILE });
 	}
+}
+
+async function ensureModelForUse(pi: ExtensionAPI): Promise<void> {
+	if (!config.asr.enabled) {
+		modelState = "ready";
+		return;
+	}
+	if (modelState === "ready") return;
+	if (modelState === "error") {
+		modelError = undefined;
+		modelState = "checking";
+		modelTask = undefined;
+	}
+	modelTask ??= (async () => {
+		try {
+			if (await isModelReady(config.asr.modelDir)) {
+				modelState = "ready";
+				modelPercent = 100;
+				return;
+			}
+			modelState = "downloading";
+			let lastBucket = -1;
+			await ensureModel(config.asr.modelDir, {
+				onProgress: progress => {
+					if (progress.phase === "download") {
+						modelPercent = Math.floor((progress.loaded / Math.max(1, progress.total)) * 100);
+						const bucket = Math.floor(modelPercent / 10);
+						if (bucket !== lastBucket) {
+							lastBucket = bucket;
+							log(pi, "info", "downloading X-ASR model", { percent: modelPercent });
+						}
+					} else if (progress.phase === "extract") {
+						modelPercent = 100;
+						log(pi, "info", "extracting X-ASR model", { modelDir: config.asr.modelDir });
+					}
+				},
+			});
+			modelState = "ready";
+			modelPercent = 100;
+			log(pi, "info", "X-ASR model ready", { modelDir: config.asr.modelDir });
+		} catch (error) {
+			modelState = "error";
+			modelError = error instanceof Error ? error.message : String(error);
+			log(pi, "error", "X-ASR model unavailable", { error: modelError, modelDir: config.asr.modelDir });
+		}
+	})();
+	await modelTask;
 }
 
 function registerProvider(pi: ExtensionAPI, port: number): void {
@@ -185,6 +238,7 @@ function statusText(settings: Settings): string {
 	const lines = [
 		`dictation: ${roles.dictation ?? "(default)"}`,
 		`ASR: ${asrPort ? `127.0.0.1:${asrPort}` : "unavailable"}  ${config.asr.modelDir}`,
+		`model: ${modelState}${modelState === "downloading" ? ` ${modelPercent}%` : ""}${modelError ? ` (${modelError})` : ""}`,
 		`live: ${config.live.enabled ? "on" : "off"}  shortcut=${config.live.shortcut}  capture=${config.live.capture}  state=${live?.state ?? liveState}`,
 		`config: ${getConfigPath()}`,
 	];
@@ -217,6 +271,10 @@ function resetLive(): void {
 
 export default async function asrZh(pi: ExtensionAPI): Promise<void> {
 	config = loadConfig();
+	if (!config.asr.enabled) {
+		modelState = "ready";
+		modelPercent = 100;
+	}
 
 	try {
 		pi.registerShortcut(config.live.shortcut, {
@@ -225,6 +283,21 @@ export default async function asrZh(pi: ExtensionAPI): Promise<void> {
 				if (!config.live.enabled) {
 					ctx.ui.notify("Live dictation is disabled", "warning");
 					return;
+				}
+				if (modelState !== "ready") {
+					if (await isModelReady(config.asr.modelDir)) {
+						modelState = "ready";
+						modelPercent = 100;
+					} else {
+						void ensureModelForUse(pi);
+						ctx.ui.notify(
+							modelState === "error"
+								? `X-ASR model unavailable: ${modelError}`
+								: "X-ASR model is downloading; try again when ready",
+							modelState === "error" ? "error" : "warning",
+						);
+						return;
+					}
 				}
 				const dictation = liveDictation(pi);
 				if (!dictation) {
@@ -244,6 +317,7 @@ export default async function asrZh(pi: ExtensionAPI): Promise<void> {
 	serversReady ??= startServer(pi);
 	await serversReady;
 	if (servers.process?.asrPort) registerProvider(pi, servers.process.asrPort);
+	if (config.asr.enabled && servers.process?.asrPort) void ensureModelForUse(pi);
 
 	pi.on("session_start", async () => {
 		if (config.autoSelectRoles) {
@@ -293,7 +367,9 @@ export default async function asrZh(pi: ExtensionAPI): Promise<void> {
 					}
 					case "selftest": {
 						setRole(settings, true);
-						report(ctx, "running ASR selftest...");
+						report(ctx, "preparing ASR model...");
+						await ensureModelForUse(pi);
+						if (modelState === "error") throw new Error(modelError ?? "X-ASR model unavailable");
 						const result = await runSelftest(ctx);
 						report(ctx, result);
 						return;

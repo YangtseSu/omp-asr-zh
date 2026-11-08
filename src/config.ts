@@ -1,20 +1,12 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import * as path from "node:path";
+
+import { defaultModelDir } from "./model";
 
 export const ASR_PROVIDER = "omp-asr-zh";
 export const ASR_MODEL_ID = "x-asr-960ms-zh-en";
 export const ASR_MODEL_SELECTOR = `${ASR_PROVIDER}/${ASR_MODEL_ID}`;
-
-export const DEFAULT_ASR_MODEL_DIR = path.join(
-	homedir(),
-	".local",
-	"share",
-	"vinput",
-	"models",
-	"sherpa-onnx",
-	"x-asr-960ms-streaming-zipformer-transducer-zh-en-punct-int8",
-);
 
 export interface LiveConfig {
 	enabled: boolean;
@@ -68,21 +60,7 @@ function findAsrModelDir(configured: unknown): string {
 	const envDir = process.env.OMP_ASR_ZH_MODEL_DIR;
 	if (envDir) return expandHome(envDir);
 	if (typeof configured === "string" && configured.trim()) return expandHome(configured);
-	const base = path.join(homedir(), ".local", "share", "vinput", "models", "sherpa-onnx");
-	try {
-		const candidates = readdirSync(base, { withFileTypes: true })
-			.filter(entry => entry.isDirectory() && entry.name.startsWith("x-asr-"))
-			.map(entry => path.join(base, entry.name))
-			.filter(
-				dir =>
-					existsSync(path.join(dir, "tokens.txt")) &&
-					(existsSync(path.join(dir, "encoder.int8.onnx")) || existsSync(path.join(dir, "encoder.onnx"))),
-			);
-		if (candidates.length > 0) return candidates.sort()[0]!;
-	} catch {
-		// Fall through to the documented default; the status command reports the missing path.
-	}
-	return DEFAULT_ASR_MODEL_DIR;
+	return defaultModelDir();
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
