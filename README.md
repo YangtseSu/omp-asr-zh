@@ -16,8 +16,9 @@ model files are committed to the repository.
 
 The extension starts one background child process with OMP's bundled Bun
 (`BUN_BE_BUN=1`). It exposes a token-protected loopback transcription endpoint
-and a token-protected WebSocket on a random port. No OMP source, native
-runtime, or bundled model is modified.
+and a token-protected WebSocket on a random port. The child loads the extension's
+declared `sherpa-onnx-node` dependency; OMP's source, native runtime, and
+bundled model are not modified.
 
 `<agent-dir>` below means `$PI_CODING_AGENT_DIR` when set, otherwise
 `$HOME/.omp/agent`.
@@ -38,16 +39,17 @@ runtime, or bundled model is modified.
 git clone <repository-url> omp-asr-zh
 cd omp-asr-zh
 bun install
-
-agent_dir="${PI_CODING_AGENT_DIR:-$HOME/.omp/agent}"
-mkdir -p "$agent_dir/extensions"
-ln -sfn "$PWD" "$agent_dir/extensions/omp-asr-zh"
+omp install .
 ```
 
-Restart OMP. The first start downloads the model in the background; the
-assistant UI stays usable while it runs. A one-shot `omp -p` process exits
-before a background download can finish, so keep an interactive session open,
-or run:
+`omp install .` links the package into the user plugin set; a local install is
+a symlink, so edits are present on the next OMP start. For a one-off development
+session without installing, run `omp --extension .`. Restart OMP after
+installing.
+
+The first start downloads the model in the background; the assistant UI stays
+usable while it runs. A one-shot `omp -p` process exits before a background
+download can finish, so keep an interactive session open, or run:
 
 ```bash
 omp -p '/asr-zh selftest'
@@ -243,15 +245,15 @@ The archive also contains the test WAVs used by `/asr-zh selftest`.
   `timeout 2 parec --format=s16le --rate=16000 --channels=1 | wc -c`.
 - If the shortcut does not fire, run `/asr-zh status`, change the chord with
   `/asr-zh shortcut <key>`, and restart OMP.
-- If the extension directory is not discovered, confirm the symlink exists at
-  `<agent-dir>/extensions/omp-asr-zh` and that `package.json` contains
-  `omp.extensions`.
+- If the extension is not discovered, run `omp plugin list` and confirm
+  `omp-asr-zh` is active, or test the checkout directly with
+  `omp --extension .`; `package.json` must contain `omp.extensions`.
 
 ## Uninstall
 
 ```bash
+omp plugin uninstall omp-asr-zh
 agent_dir="${PI_CODING_AGENT_DIR:-$HOME/.omp/agent}"
-rm "$agent_dir/extensions/omp-asr-zh"
 rm -rf "$agent_dir/cache/omp-asr-zh"
 rm -f "$agent_dir/omp-asr-zh.json"
 # Optional: remove the downloaded model.

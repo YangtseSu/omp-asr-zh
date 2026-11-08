@@ -4,7 +4,7 @@ import type { Dirent } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
-import { getTinyModelsCacheDir } from "@oh-my-pi/pi-utils";
+import { getTinyModelsCacheDir } from "./paths";
 
 /** Cache key under the shared OMP tiny-model directory. */
 export const MODEL_REPO = "x-asr-960ms-streaming-zh-en-int8";

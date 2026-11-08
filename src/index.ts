@@ -1,28 +1,26 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
+import { createRequire } from "node:module";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 
-import type { Model } from "@oh-my-pi/pi-ai";
-import { transcribeAudio } from "@oh-my-pi/pi-ai/transcription";
 import type { ExtensionAPI, ExtensionCommandContext } from "@oh-my-pi/pi-coding-agent";
+import type { KeyId } from "@oh-my-pi/pi-tui/app-keybindings";
 import { lookup } from "@oh-my-pi/pi-coding-agent/config/registry";
 import type { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { ensureRuntimeInstalled, getTinyModelsCacheDir } from "@oh-my-pi/pi-utils";
 
 import {
 	ASR_MODEL_ID,
 	ASR_MODEL_SELECTOR,
 	ASR_PROVIDER,
 	type AsrZhConfig,
-	getConfigPath,
-	getLogFile,
 	loadConfig,
 	saveLiveSettings,
 } from "./config";
 import { LiveDictation, type LiveState } from "./live-dictation";
 import { ensureModel, isModelReady } from "./model";
+import { getConfigPath, getLogFile } from "./paths";
 import { type ServerProcess, startServerProcess } from "./server-process";
 
-const SHERPA_VERSION = "1.13.2";
 const BUILTIN_DICTATION: Record<string, true> = {
 	"local/parakeet-tdt-0.6b-v3": true,
 	"local/nemotron-streaming-en-0.6b": true,
@@ -53,29 +51,37 @@ let modelError: string | undefined;
 let modelTask: Promise<void> | undefined;
 const startupErrors: string[] = [];
 
-function log(pi: ExtensionAPI, level: "debug" | "info" | "warn" | "error", message: string, details?: unknown): void {
+function log(
+	pi: ExtensionAPI,
+	level: "debug" | "info" | "warn" | "error",
+	message: string,
+	details?: Record<string, unknown>,
+): void {
 	if (details === undefined) pi.logger[level](message);
 	else pi.logger[level](message, details);
 }
 
-async function resolveSherpaRuntime(pi: ExtensionAPI): Promise<string> {
-	const runtimeDir = path.join(path.dirname(getTinyModelsCacheDir()), "stt-runtime", `sherpa-${SHERPA_VERSION}`);
-	const entry = path.join(runtimeDir, "node_modules", "sherpa-onnx-node", "sherpa-onnx.js");
-	if (existsSync(entry)) return entry;
-	log(pi, "info", "installing sherpa-onnx runtime", { runtimeDir, version: SHERPA_VERSION });
-	await ensureRuntimeInstalled({
-		runtimeDir,
-		install: { dependencies: { "sherpa-onnx-node": SHERPA_VERSION } },
-		probePackage: "sherpa-onnx-node",
-		onPhase: phase => log(pi, "debug", "sherpa runtime install", { phase }),
-	});
-	if (!existsSync(entry)) throw new Error(`sherpa-onnx runtime entry not found at ${entry}`);
-	return entry;
+function resolveSherpaRuntime(): string {
+	const extensionRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+	const candidates = [
+		path.join(extensionRoot, "node_modules", "sherpa-onnx-node", "sherpa-onnx.js"),
+		// Published plugins may hoist dependencies beside the package.
+		path.join(path.dirname(extensionRoot), "sherpa-onnx-node", "sherpa-onnx.js"),
+		path.join(path.dirname(extensionRoot), "node_modules", "sherpa-onnx-node", "sherpa-onnx.js"),
+	];
+	for (const entry of candidates) {
+		if (existsSync(entry)) return entry;
+	}
+	try {
+		return createRequire(path.join(extensionRoot, "package.json")).resolve("sherpa-onnx-node");
+	} catch {
+		throw new Error("sherpa-onnx-node is not installed; run bun install");
+	}
 }
 
 async function startServer(pi: ExtensionAPI): Promise<void> {
 	mkdirSync(path.dirname(LOG_FILE), { recursive: true });
-	const runtimeEntry = config.asr.enabled ? await resolveSherpaRuntime(pi) : undefined;
+	const runtimeEntry = config.asr.enabled ? resolveSherpaRuntime() : undefined;
 	const asr =
 		config.asr.enabled && runtimeEntry
 			? {
@@ -196,12 +202,6 @@ function report(ctx: ExtensionCommandContext, text: string): void {
 	else process.stdout.write(`${text}\n`);
 }
 
-function resolveModel(ctx: ExtensionCommandContext, provider: string, id: string): Model {
-	const model = ctx.modelRegistry.getAvailable("all").find(m => m.provider === provider && m.id === id);
-	if (!model) throw new Error(`${provider}/${id} is not registered`);
-	return model;
-}
-
 function findSelftestWav(): string {
 	const configured = process.env.OMP_ASR_ZH_SELFTEST_WAV;
 	if (configured) return configured;
@@ -219,15 +219,22 @@ function findSelftestWav(): string {
 	return path.join(dir, first);
 }
 
-async function runSelftest(ctx: ExtensionCommandContext): Promise<string> {
-	const asr = resolveModel(ctx, ASR_PROVIDER, ASR_MODEL_ID);
+async function runSelftest(): Promise<string> {
+	const port = servers.process?.asrPort;
+	if (!port) throw new Error("ASR server is unavailable");
 	const audio = readFileSync(findSelftestWav());
-	const transcription = await transcribeAudio(
-		asr,
-		{ audio, mimeType: "audio/wav", fileName: "selftest.wav", responseFormat: "json" },
-		{ apiKey: ctx.modelRegistry.resolver(asr, ctx.sessionManager.getSessionId()) },
-	);
-	const text = transcription.text.trim();
+	const form = new FormData();
+	form.append("file", new Blob([audio], { type: "audio/wav" }), "selftest.wav");
+	const response = await fetch(`http://127.0.0.1:${port}/v1/audio/transcriptions`, {
+		method: "POST",
+		headers: { Authorization: `Bearer ${SERVER_TOKEN}` },
+		body: form,
+	});
+	if (!response.ok) {
+		throw new Error(`ASR selftest failed (${response.status}): ${await response.text()}`);
+	}
+	const result = (await response.json()) as { text?: string };
+	const text = result.text?.trim();
 	if (!text) throw new Error("ASR returned an empty transcript");
 	return `ASR ${audio.byteLength} bytes -> ${text}`;
 }
@@ -277,7 +284,7 @@ export default async function asrZh(pi: ExtensionAPI): Promise<void> {
 	}
 
 	try {
-		pi.registerShortcut(config.live.shortcut, {
+		pi.registerShortcut(config.live.shortcut as KeyId, {
 			description: "Chinese ASR: toggle live dictation",
 			handler: async ctx => {
 				if (!config.live.enabled) {
@@ -326,7 +333,7 @@ export default async function asrZh(pi: ExtensionAPI): Promise<void> {
 		}
 		if (config.live.enabled) {
 			try {
-				const conflict = pi.getShortcutConflict(config.live.shortcut);
+				const conflict = pi.getShortcutConflict(config.live.shortcut as KeyId);
 				if (conflict) {
 					log(pi, "warn", "live dictation shortcut conflict", {
 						shortcut: config.live.shortcut,
@@ -370,7 +377,7 @@ export default async function asrZh(pi: ExtensionAPI): Promise<void> {
 						report(ctx, "preparing ASR model...");
 						await ensureModelForUse(pi);
 						if (modelState === "error") throw new Error(modelError ?? "X-ASR model unavailable");
-						const result = await runSelftest(ctx);
+						const result = await runSelftest();
 						report(ctx, result);
 						return;
 					}

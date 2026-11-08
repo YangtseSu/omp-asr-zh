@@ -1,9 +1,9 @@
 {
   "name": "omp-asr-zh",
   "version": "0.1.0",
-  "private": true,
   "type": "module",
   "description": "OMP extension: local Chinese streaming ASR (sherpa-onnx X-ASR) with live dictation",
+  "files": ["src", "README.md"],
   "omp": {
     "extensions": ["./src/index.ts"]
   },
@@ -11,7 +11,11 @@
     "check": "tsc --noEmit"
   },
   "devDependencies": {
+    "@oh-my-pi/pi-coding-agent": "18.18.1",
     "@types/bun": "latest",
     "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "sherpa-onnx-node": "1.13.2"
   }
 }

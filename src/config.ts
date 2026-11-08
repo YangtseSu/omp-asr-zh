@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import * as path from "node:path";
 
 import { defaultModelDir } from "./model";
+import { getConfigPath } from "./paths";
 
 export const ASR_PROVIDER = "omp-asr-zh";
 export const ASR_MODEL_ID = "x-asr-960ms-zh-en";
@@ -26,18 +27,6 @@ export interface AsrZhConfig {
 	};
 	live: LiveConfig;
 	autoSelectRoles: boolean;
-}
-
-export function getAgentDir(): string {
-	return process.env.PI_CODING_AGENT_DIR || path.join(homedir(), ".omp", "agent");
-}
-
-export function getConfigPath(): string {
-	return process.env.OMP_ASR_ZH_CONFIG || path.join(getAgentDir(), "omp-asr-zh.json");
-}
-
-export function getLogFile(): string {
-	return path.join(getAgentDir(), "cache", "omp-asr-zh", "server.log");
 }
 
 function expandHome(value: string): string {
