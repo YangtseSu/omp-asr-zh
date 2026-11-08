@@ -27,6 +27,7 @@ bundled model are not modified.
 
 ## Requirements
 
+- Linux with PipeWire or PulseAudio for microphone capture.
 - OMP 18.x with extension and shortcut support.
 - Bun to install this package's dependencies once.
 - `tar` with bzip2 support (`tar -xjf`) for the model archive.
@@ -170,6 +171,21 @@ arecord -q -f S16_LE -r 16000 -c 1 -t raw
 Set `live.capture` or `/asr-zh capture` to a command that writes raw 16 kHz
 mono s16le PCM to stdout. The command is trusted local configuration and runs
 through `sh -c`.
+
+## Security and external access
+
+Extensions run in-process with OMP's filesystem, network, and process
+privileges; this one is not sandboxed. It:
+
+- starts one child process with OMP's bundled Bun to host the ASR server;
+- opens two token-protected loopback ports on a random local port;
+- downloads the pinned model archive from GitHub on first use and writes it to
+  the OMP tiny-model cache;
+- runs the configured capture command through `sh -c` (the default commands
+  are `parec`, `pw-record`, or `arecord`);
+- does not read or write `config.yml`, `keybindings.yml`, or `modelRoles`;
+- sends no telemetry, and keeps audio on the machine unless the configured
+  capture command itself does otherwise.
 
 ## Model download
 

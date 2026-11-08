@@ -3,9 +3,27 @@
   "version": "0.1.0",
   "type": "module",
   "description": "OMP extension: local Chinese streaming ASR (sherpa-onnx X-ASR) with live dictation",
-  "files": ["src", "README.md"],
+  "author": "Yangtse Su",
+  "keywords": [
+    "omp",
+    "extension",
+    "asr",
+    "chinese",
+    "speech-to-text",
+    "sherpa-onnx",
+    "x-asr"
+  ],
+  "os": [
+    "linux"
+  ],
+  "files": [
+    "src",
+    "README.md"
+  ],
   "omp": {
-    "extensions": ["./src/index.ts"]
+    "extensions": [
+      "./src/index.ts"
+    ]
   },
   "scripts": {
     "check": "tsc --noEmit"
