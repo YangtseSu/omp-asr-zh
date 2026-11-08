@@ -5,12 +5,9 @@ import { fileURLToPath } from "node:url";
 
 import type { ExtensionAPI, ExtensionCommandContext } from "@oh-my-pi/pi-coding-agent";
 import type { KeyId } from "@oh-my-pi/pi-tui/app-keybindings";
-import { lookup } from "@oh-my-pi/pi-coding-agent/config/registry";
-import type { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
 
 import {
 	ASR_MODEL_ID,
-	ASR_MODEL_SELECTOR,
 	ASR_PROVIDER,
 	type AsrZhConfig,
 	loadConfig,
@@ -21,17 +18,6 @@ import { ensureModel, isModelReady } from "./model";
 import { getConfigPath, getLogFile } from "./paths";
 import { type ServerProcess, startServerProcess } from "./server-process";
 
-const BUILTIN_DICTATION: Record<string, true> = {
-	"local/parakeet-tdt-0.6b-v3": true,
-	"local/nemotron-streaming-en-0.6b": true,
-	"local/whisper-base": true,
-	"local/whisper-small": true,
-	"local/whisper-large-v3-turbo": true,
-	// The native X-ASR tier from the unmerged upstream PR. The extension serves
-	// the same model, so taking over the role keeps live dictation working on a
-	// stock release.
-	"local/x-asr-960ms-zh-en": true,
-};
 const SERVER_TOKEN = crypto.randomUUID();
 const LOG_FILE = getLogFile();
 
@@ -175,27 +161,7 @@ function registerProvider(pi: ExtensionAPI, port: number): void {
 	});
 }
 
-function setRole(settings: Settings, force: boolean): string[] {
-	const handle = lookup("modelRoles");
-	if (!handle) return [];
-	if (!config.asr.enabled || !servers.process?.asrPort) return [];
-	const current = (handle.get(settings) ?? {}) as Record<string, string>;
-	const replace = force || !current.dictation || BUILTIN_DICTATION[current.dictation] === true;
-	if (!replace || current.dictation === ASR_MODEL_SELECTOR) return [];
-	handle.override(settings, { ...current, dictation: ASR_MODEL_SELECTOR });
-	return [`dictation=${ASR_MODEL_SELECTOR}`];
-}
 
-function clearRole(settings: Settings): string[] {
-	const handle = lookup("modelRoles");
-	if (!handle) return [];
-	const current = (handle.get(settings) ?? {}) as Record<string, string>;
-	if (current.dictation !== ASR_MODEL_SELECTOR) return [];
-	const next = { ...current };
-	delete next.dictation;
-	handle.override(settings, next);
-	return ["dictation"];
-}
 
 function report(ctx: ExtensionCommandContext, text: string): void {
 	if (ctx.hasUI) ctx.ui.notify(text, "info");
@@ -239,11 +205,9 @@ async function runSelftest(): Promise<string> {
 	return `ASR ${audio.byteLength} bytes -> ${text}`;
 }
 
-function statusText(settings: Settings): string {
-	const roles = (lookup("modelRoles")?.get(settings) ?? {}) as Record<string, string>;
+function statusText(): string {
 	const asrPort = servers.process?.asrPort;
 	const lines = [
-		`dictation: ${roles.dictation ?? "(default)"}`,
 		`ASR: ${asrPort ? `127.0.0.1:${asrPort}` : "unavailable"}  ${config.asr.modelDir}`,
 		`model: ${modelState}${modelState === "downloading" ? ` ${modelPercent}%` : ""}${modelError ? ` (${modelError})` : ""}`,
 		`live: ${config.live.enabled ? "on" : "off"}  shortcut=${config.live.shortcut}  capture=${config.live.capture}  state=${live?.state ?? liveState}`,
@@ -327,53 +291,33 @@ export default async function asrZh(pi: ExtensionAPI): Promise<void> {
 	if (config.asr.enabled && servers.process?.asrPort) void ensureModelForUse(pi);
 
 	pi.on("session_start", async () => {
-		if (config.autoSelectRoles) {
-			const changed = setRole(pi.pi.settings, false);
-			if (changed.length > 0) log(pi, "info", "Chinese ASR role selected", { roles: changed });
-		}
-		if (config.live.enabled) {
-			try {
-				const conflict = pi.getShortcutConflict(config.live.shortcut as KeyId);
-				if (conflict) {
-					log(pi, "warn", "live dictation shortcut conflict", {
-						shortcut: config.live.shortcut,
-						kind: conflict.kind,
-					});
-				}
-			} catch {
-				// The shortcut check is advisory; a blocked key is reported by the TUI.
+		if (!config.live.enabled) return;
+		try {
+			const conflict = pi.getShortcutConflict(config.live.shortcut as KeyId);
+			if (conflict) {
+				log(pi, "warn", "live dictation shortcut conflict", {
+					shortcut: config.live.shortcut,
+					kind: conflict.kind,
+				});
 			}
+		} catch {
+			// The shortcut check is advisory; a blocked key is reported by the TUI.
 		}
-	});
-	pi.on("session_switch", async () => {
-		if (config.autoSelectRoles) setRole(pi.pi.settings, false);
 	});
 	pi.on("session_shutdown", async () => {
 		resetLive();
 	});
 
 	pi.registerCommand("asr-zh", {
-		description: "Chinese ASR: status, on/off, selftest, live, shortcut, capture",
+		description: "Chinese ASR: status, selftest, live, shortcut, capture",
 		handler: async (args, ctx) => {
 			const [subcommand, ...rest] = (args ?? "").trim().split(/\s+/).filter(Boolean);
-			const settings = pi.pi.settings;
 			try {
 				switch (subcommand || "status") {
 					case "status":
-						report(ctx, statusText(settings));
+						report(ctx, statusText());
 						return;
-					case "on": {
-						const changed = setRole(settings, true);
-						report(ctx, changed.length > 0 ? `enabled: ${changed.join(", ")}` : "already enabled");
-						return;
-					}
-					case "off": {
-						const changed = clearRole(settings);
-						report(ctx, changed.length > 0 ? `disabled: ${changed.join(", ")}` : "already disabled");
-						return;
-					}
 					case "selftest": {
-						setRole(settings, true);
 						report(ctx, "preparing ASR model...");
 						await ensureModelForUse(pi);
 						if (modelState === "error") throw new Error(modelError ?? "X-ASR model unavailable");
@@ -425,7 +369,7 @@ export default async function asrZh(pi: ExtensionAPI): Promise<void> {
 					default:
 						report(
 							ctx,
-							"usage: /asr-zh [status|on|off|selftest|live [on|off]|shortcut <key>|capture <command|auto>]",
+							"usage: /asr-zh [status|selftest|live [on|off]|shortcut <key>|capture <command|auto>]",
 						);
 				}
 			} catch (error) {

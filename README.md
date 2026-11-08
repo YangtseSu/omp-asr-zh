@@ -4,9 +4,11 @@ OMP extension for local Chinese speech input. It uses the sherpa-onnx streaming
 X-ASR Zipformer2 transducer (zh/en, punctuation, int8) and adds two dictation
 paths without patching OMP:
 
-- **Buffered dictation** through OMP's normal `openai-transcriptions` provider
-  and the `dictation` role. Recording stops, the WAV is transcribed, and the
-  final text is committed.
+- **Optional buffered dictation** through OMP's normal
+  `openai-transcriptions` provider and the `dictation` role. The extension does
+  not select that role automatically; set it manually if you want OMP's own
+  dictation to use this provider. Recording stops, the WAV is transcribed, and
+  the final text is committed.
 - **Live dictation** owned by this extension. A shortcut records audio, streams
   PCM to a local WebSocket, and mirrors partial text into the core editor while
   you speak. On stop, the final transcript replaces the preview.
@@ -82,8 +84,7 @@ are the defaults:
     "enabled": true,
     "shortcut": "ctrl+alt+space",
     "capture": "auto"
-  },
-  "autoSelectRoles": true
+  }
 }
 ```
 
@@ -107,39 +108,31 @@ Environment overrides:
 | `OMP_ASR_ZH_LIVE_ENABLED` | `0` disables the live shortcut |
 | `OMP_ASR_ZH_SHORTCUT` | live shortcut, default `ctrl+alt+space` |
 | `OMP_ASR_ZH_CAPTURE` | raw PCM capture command, default `auto` |
-| `OMP_ASR_ZH_AUTOSELECT` | `0` keeps the configured dictation role unchanged |
 | `OMP_ASR_ZH_CONFIG` | alternate config file path |
 | `OMP_ASR_ZH_SELFTEST_WAV` | WAV used by `/asr-zh selftest` |
 
-### Role selection
+### Dictation role (optional)
 
-At session start the extension sets:
+This extension never changes `modelRoles`. OMP's Space-hold and its configured
+dictation model remain the user's choice, and live dictation works without a
+role. To use this provider for OMP's own buffered dictation, set the role
+manually:
 
 ```yaml
 modelRoles:
   dictation: omp-asr-zh/x-asr-960ms-zh-en
 ```
 
-It replaces an unset role or OMP's built-in local dictation defaults
-(`local/parakeet-tdt-0.6b-v3`, `local/nemotron-streaming-en-0.6b`, the Whisper
-local models). It also replaces `local/x-asr-960ms-zh-en`, the native tier from
-the unmerged upstream PR, because the extension serves the same model and adds
-live partials; use `/asr-zh off` or `autoSelectRoles: false` to keep the native
-role. A role that names any other explicit model is left alone. Set
-`autoSelectRoles: false` to keep the configured role and use `/asr-zh on` when
-needed.
-
-When the local server fails, OMP's normal role chain continues to the built-in
-local model, so dictation keeps working with the stock fallback.
+With an explicit role, OMP's `stt.enabled` and Space-hold use this provider. To
+keep OMP's stock dictation model, leave the role unset or point it at another
+model. The extension's live shortcut is independent of this role.
 
 ## Commands
 
 | Command | Behavior |
 | --- | --- |
-| `/asr-zh` or `/asr-zh status` | Show the dictation role, server port, model state and path, live settings, and capture state |
-| `/asr-zh on` | Select the Chinese model for the current session |
-| `/asr-zh off` | Remove this extension's role selection for the current session |
-| `/asr-zh selftest` | Wait for the model if needed, then transcribe its bundled test WAV through the registered provider |
+| `/asr-zh` or `/asr-zh status` | Show the server port, model state and path, live settings, and capture state |
+| `/asr-zh selftest` | Wait for the model if needed, then transcribe its bundled test WAV through the local endpoint |
 | `/asr-zh live` | Toggle live dictation (interactive TUI) |
 | `/asr-zh live on\|off` | Persist the live feature switch |
 | `/asr-zh shortcut <key>` | Persist the live shortcut; restart OMP to bind it |
@@ -161,9 +154,10 @@ The default shortcut is `ctrl+alt+space`. It toggles one live session:
 
 Live dictation never submits the prompt; press Enter yourself. It does nothing
 until `model: ready`; `/asr-zh status` reports the download progress. The
-built-in `stt.enabled` dictation remains available, but it uses the buffered
-provider path. If you only want live dictation, set `stt.enabled: false` and use
-the shortcut.
+shortcut is registered by the extension and does not edit `keybindings.yml`.
+OMP's own `app.stt.pushToTalk` (Space) and `stt.enabled` remain independent and
+can be used at the same time. If you only want live dictation, set
+`stt.enabled: false`; the live shortcut keeps working.
 
 The default `auto` capture command resolves in this order:
 

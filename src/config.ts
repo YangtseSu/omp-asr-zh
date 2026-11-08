@@ -7,7 +7,6 @@ import { getConfigPath } from "./paths";
 
 export const ASR_PROVIDER = "omp-asr-zh";
 export const ASR_MODEL_ID = "x-asr-960ms-zh-en";
-export const ASR_MODEL_SELECTOR = `${ASR_PROVIDER}/${ASR_MODEL_ID}`;
 
 export interface LiveConfig {
 	enabled: boolean;
@@ -26,7 +25,6 @@ export interface AsrZhConfig {
 		tailPaddingSeconds: number;
 	};
 	live: LiveConfig;
-	autoSelectRoles: boolean;
 }
 
 function expandHome(value: string): string {
@@ -92,7 +90,6 @@ export function loadConfig(): AsrZhConfig {
 			capture:
 				typeof configuredCapture === "string" && configuredCapture.trim() ? configuredCapture.trim() : "auto",
 		},
-		autoSelectRoles: asBool(process.env.OMP_ASR_ZH_AUTOSELECT ?? raw.autoSelectRoles, true),
 	};
 }
 
