@@ -28,6 +28,10 @@ const BUILTIN_DICTATION: Record<string, true> = {
 	"local/whisper-base": true,
 	"local/whisper-small": true,
 	"local/whisper-large-v3-turbo": true,
+	// The native X-ASR tier from the unmerged upstream PR. The extension serves
+	// the same model, so taking over the role keeps live dictation working on a
+	// stock release.
+	"local/x-asr-960ms-zh-en": true,
 };
 const SERVER_TOKEN = crypto.randomUUID();
 const LOG_FILE = getLogFile();

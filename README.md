@@ -100,7 +100,10 @@ modelRoles:
 
 It replaces an unset role or OMP's built-in local dictation defaults
 (`local/parakeet-tdt-0.6b-v3`, `local/nemotron-streaming-en-0.6b`, the Whisper
-local models). A role that names another explicit model is left alone. Set
+local models). It also replaces `local/x-asr-960ms-zh-en`, the native tier from
+the unmerged upstream PR, because the extension serves the same model and adds
+live partials; use `/asr-zh off` or `autoSelectRoles: false` to keep the native
+role. A role that names any other explicit model is left alone. Set
 `autoSelectRoles: false` to keep the configured role and use `/asr-zh on` when
 needed.
 
