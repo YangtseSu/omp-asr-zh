@@ -38,8 +38,22 @@ bundled model are not modified.
 
 ## Install
 
+From the GitHub release tag:
+
 ```bash
-git clone <repository-url> omp-asr-zh
+omp install github:YangtseSu/omp-asr-zh#v0.1.0
+```
+
+From npm, after the npm release is published:
+
+```bash
+omp install omp-asr-zh
+```
+
+From a checkout for development:
+
+```bash
+git clone https://github.com/YangtseSu/omp-asr-zh.git
 cd omp-asr-zh
 bun install
 omp install .
@@ -269,3 +283,10 @@ rm -f "$agent_dir/omp-asr-zh.json"
 # Optional: remove the downloaded model.
 rm -rf "$agent_dir/cache/tiny-models/x-asr-960ms-streaming-zh-en-int8"
 ```
+
+## License
+
+GPL-3.0-or-later. See [LICENSE](LICENSE).
+
+The X-ASR model archive is downloaded from the k2-fsa/sherpa-onnx release; model
+licensing follows that release.

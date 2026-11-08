@@ -4,6 +4,7 @@
   "type": "module",
   "description": "OMP extension: local Chinese streaming ASR (sherpa-onnx X-ASR) with live dictation",
   "author": "Yangtse Su",
+  "license": "GPL-3.0-or-later",
   "keywords": [
     "omp",
     "extension",
@@ -18,8 +19,17 @@
   ],
   "files": [
     "src",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/YangtseSu/omp-asr-zh.git"
+  },
+  "homepage": "https://github.com/YangtseSu/omp-asr-zh#readme",
+  "bugs": {
+    "url": "https://github.com/YangtseSu/omp-asr-zh/issues"
+  },
   "omp": {
     "extensions": [
       "./src/index.ts"
