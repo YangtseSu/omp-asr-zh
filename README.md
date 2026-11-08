@@ -167,6 +167,7 @@ through `sh -c`.
 
 ## Limitations
 
+- Live dictation holds the editor text read when recording starts and replaces the editor with `base + transcript` on every update. Do not edit that prompt while recording; finish or stop the dictation first. The cursor ends at the end of the transcript.
 - Live dictation updates the editor with the full in-progress transcript; it
   does not segment the draft into independently committed phrases, because the
   X-ASR archive does not ship endpoint rules.

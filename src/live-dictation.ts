@@ -85,9 +85,8 @@ export class LiveDictation {
 			ws.binaryType = "arraybuffer";
 			this.#ws = ws;
 			await this.#openSocket(ws);
-			if (this.#cancelled) {
-				this.#cleanup();
-				return;
+			if (this.#cancelled || ws.readyState !== WebSocket.OPEN) {
+				throw new Error("ASR server closed the live session");
 			}
 			const capture = this.#spawnCapture();
 			this.#capture = capture;
